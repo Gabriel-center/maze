@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Maze Raycaster with Audio Spatialization</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; background: #000; }
+    /* Win Message Overlay for Fade Effect */
+    #winMessage {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: black;
+      color: white;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      font-size: 48px;
+      font-family: sans-serif;
+      opacity: 0;
+      transition: opacity 1s ease-in-out;
+      z-index: 10;
+    }
+    /* Start screen for user interaction */
+    #startScreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: black;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 24px;
+      font-family: sans-serif;
+      z-index: 20;
+    }
+    #startButton {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="winMessage"></div>
+  <div id="startScreen">
+    <h1>Maze Explorer</h1>
+    <p>Use WASD to move, Arrow keys to look around</p>
+    <button id="startButton">Click to Begin</button>
+  </div>
+  <script>
+    // ---------------- Dynamic Canvas Dimensions ----------------
+    let WIDTH = window.innerWidth;
+    let HEIGHT = window.innerHeight;
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    
+    // Offscreen buffers for chromatic aberration layers.
+    const bufferMain = document.createElement("canvas");
+    const bufferA = document.createElement("canvas");
+    const bufferB = document.createElement("canvas");
+    bufferMain.width = WIDTH; bufferMain.height = HEIGHT;
+    bufferA.width = WIDTH; bufferA.height = HEIGHT;
+    bufferB.width = WIDTH; bufferB.height = HEIGHT;
+    const ctxMain = bufferMain.getContext("2d");
+    const ctxA = bufferA.getContext("2d");
+    const ctxB = bufferB.getContext("2d");
+    
+    window.addEventListener("resize", () => {
+      WIDTH = window.innerWidth;
+      HEIGHT = window.innerHeight;
+      canvas.width = WIDTH;
+      canvas.height = HEIGHT;
+      bufferMain.width = WIDTH; bufferMain.height = HEIGHT;
+      bufferA.width = WIDTH; bufferA.height = HEIGHT;
+      bufferB.width = WIDTH; bufferB.height = HEIGHT;
+    });
+    
+    // ---------------- Configuration Constants ----------------
+    const fovMain = Math.PI / 1.2;
+    const fovA = Math.PI / 1.1;
+    const fovB = Math.PI / 1.3;
+    const NUM_RAYS = 220;
+    const MAX_DEPTH = 100;
+    const DELTA_DIST = 0.01;
+    
+    // Fog configuration.
+    const FOG_START = 1;    
+    const FOG_END = 5;      
+    const FOG_COLOR = 5;    
+    
+    const BLACK = "#000";
+    const WHITE = "#fff";
+    
+    // Movement and rotation speeds.
+    const moveSpeed = 0.05;
+    const rotSpeed = 0.03;
+    const pitchSpeed = 10; // Adjust for smooth pitch changes
+    
+    // ---------------- Global Maze Color and Helpers ----------------
+    let mazeColor = getRandomColor();
+    let hueRotateA = Math.random() * 360; // Random hue rotation for bufferA
+    let hueRotateB = Math.random() * 360; // Random hue rotation for bufferB
+    
+    function getRandomColor() {
+      const letters = '0123456789ABCDEF';
+      let color = '#';
+      for (let i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+      }
+      return color;
+    }
+    
+    // Adjusts a hex color by a factor (expects factor between 0 and 1)
+    function adjustColor(hex, factor) {
+      let r = parseInt(hex.slice(1, 3), 16);
+      let g = parseInt(hex.slice(3, 5), 16);
+      let b = parseInt(hex.slice(5, 7), 16);
+      r = Math.floor(r * factor);
+      g = Math.floor(g * factor);
+      b = Math.floor(b * factor);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    // ---------------- Maze Generation with Verticality ----------------
+    class Maze {
+      constructor(width, height) {
+        this.width = (width % 2 === 1) ? width : width + 1;
+        this.height = (height % 2 === 1) ? height : height + 1;
+        this.grid = [];
+        for (let y = 0; y < this.height; y++) {
+          this.grid[y] = [];
+          for (let x = 0; x < this.width; x++) {
+            this.grid[y][x] = 1;
+          }
+        }
+        this.heightMap = [];
+        for (let y = 0; y < this.height; y++) {
+          this.heightMap[y] = [];
+          for (let x = 0; x < this.width; x++) {
+            this.heightMap[y][x] = 0;
+          }
+        }
+        this.generateMaze();
+        this.generateHeights();
+        this.setExit();
+      }
+    
+      generateMaze() {
+        let stack = [];
+        let startX = 1 + 2 * Math.floor(Math.random() * ((this.width - 1) / 2));
+        let startY = 1 + 2 * Math.floor(Math.random() * ((this.height - 1) / 2));
+        this.grid[startY][startX] = 0;
+        this.start = { x: startX, y: startY }; // Store starting position
+        stack.push({x: startX, y: startY});
+        const directions = [
+          {dx: 2, dy: 0},
+          {dx: -2, dy: 0},
+          {dx: 0, dy: 2},
+          {dx: 0, dy: -2}
+        ];
+        while (stack.length > 0) {
+          let current = stack[stack.length - 1];
+          let cx = current.x, cy = current.y;
+          let neighbors = [];
+          for (let d of directions) {
+            let nx = cx + d.dx, ny = cy + d.dy;
+            if (nx > 0 && nx < this.width && ny > 0 && ny < this.height && this.grid[ny][nx] === 1) {
+              neighbors.push({nx, ny, dx: d.dx, dy: d.dy});
+            }
+          }
+          if (neighbors.length > 0) {
+            let chosen = neighbors[Math.floor(Math.random() * neighbors.length)];
+            this.grid[cy + chosen.dy / 2][cx + chosen.dx / 2] = 0;
+            this.grid[chosen.ny][chosen.nx] = 0;
+            stack.push({x: chosen.nx, y: chosen.ny});
+          } else {
+            stack.pop();
+          }
+        }
+      }
+    
+      generateHeights() {
+        for (let y = 0; y < this.height; y++) {
+          for (let x = 0; x < this.width; x++) {
+            if (this.grid[y][x] === 0) {
+              this.heightMap[y][x] = Math.floor(Math.random() * 5) * 0.5;
+            }
+          }
+        }
+        for (let iter = 0; iter < 5; iter++) {
+          let newHeightMap = [];
+          for (let y = 0; y < this.height; y++) {
+            newHeightMap[y] = [];
+            for (let x = 0; x < this.width; x++) {
+              newHeightMap[y][x] = this.heightMap[y][x];
+            }
+          }
+          for (let y = 1; y < this.height - 1; y++) {
+            for (let x = 1; x < this.width - 1; x++) {
+              if (this.grid[y][x] === 0) {
+                let sum = 0, count = 0;
+                const offsets = [{dx:1, dy:0}, {dx:-1, dy:0}, {dx:0, dy:1}, {dx:0, dy:-1}];
+                for (let off of offsets) {
+                  if (this.grid[y + off.dy][x + off.dx] === 0) {
+                    sum += this.heightMap[y + off.dy][x + off.dx];
+                    count++;
+                  }
+                }
+                if (count > 0) {
+                  newHeightMap[y][x] = sum / count;
+                }
+              }
+            }
+          }
+          this.heightMap = newHeightMap;
+        }
+      }
+    
+      setExit() {
+        for (let y = this.height - 2; y >= 0; y--) {
+          for (let x = this.width - 2; x >= 0; x--) {
+            if (this.grid[y][x] === 0) {
+              this.exit = {x, y};
+              return;
+            }
+          }
+        }
+      }
+    }
+    
+    // ---------------- Player Class ----------------
+    class Player {
+      constructor(x, y, angle, height = 1.0) {
+        this.x = x;
+        this.y = y;
+        this.angle = angle;
+        this.height = height;
+        this.pitch = 0;
+      }
+    
+      move(dx, dy, maze) {
+        let newX = this.x + dx;
+        let newY = this.y + dy;
+        if (!collides(newX, newY, maze)) {
+          this.x = newX;
+          this.y = newY;
+        }
+      }
+    }
+    
+    function collides(x, y, maze) {
+      let gridX = Math.floor(x);
+      let gridY = Math.floor(y);
+      if (gridX < 0 || gridX >= maze.width || gridY < 0 || gridY >= maze.height) {
+        return true;
+      }
+      return maze.grid[gridY][gridX] === 1;
+    }
+    
+    // ---------------- Raycasting Functions ----------------
+    function castRays(player, maze, context, fov) {
+      let rayAngle = player.angle - fov / 2;
+      let deltaAngle = fov / NUM_RAYS;
+      let sliceWidth = WIDTH / NUM_RAYS;
+      
+      for (let ray = 0; ray < NUM_RAYS; ray++) {
+        let angle = rayAngle + ray * deltaAngle;
+        let result = castSingleRay(player.x, player.y, angle, maze);
+        let dist = result.distance;
+        dist *= Math.cos(angle - player.angle);
+        let projHeight = (dist > 0) ? (1 / dist) * 277 : 0;
+        
+        let floorHeight = (maze.grid[result.gridY][result.gridX] === 1) ? 1.0 : maze.heightMap[result.gridY][result.gridX];
+        let heightDiff = floorHeight - player.height;
+        let offset = heightDiff * 100;
+        let y_coord = (HEIGHT / 2) - (projHeight / 2) - offset + player.pitch;
+        let x_coord = ray * sliceWidth;
+        
+        // Use the mazeColor (adjusted) for the wall fill.
+        let shade = Math.max(50, Math.min(255, Math.floor(255 - dist * 12)));
+        context.fillStyle = adjustColor(mazeColor, shade / 255);
+        context.fillRect(x_coord, y_coord, sliceWidth, projHeight);
+        
+        if (result.passedExit) {
+          context.fillStyle = "rgba(0, 255, 0, 0.2)";
+          context.fillRect(x_coord, 0, sliceWidth, HEIGHT);
+        }
+      }
+    }
+    
+    function castSingleRay(px, py, angle, maze) {
+      let sinA = Math.sin(angle);
+      let cosA = Math.cos(angle);
+      let x = px, y = py;
+      let currentGridX = Math.floor(px);
+      let currentGridY = Math.floor(py);
+      let passedExit = false;
+    
+      for (let i = 0; i < MAX_DEPTH / DELTA_DIST; i++) {
+        x += cosA * DELTA_DIST;
+        y += sinA * DELTA_DIST;
+        let newGridX = Math.floor(x);
+        let newGridY = Math.floor(y);
+        if (newGridX !== currentGridX || newGridY !== currentGridY) {
+          if (newGridX === maze.exit.x && newGridY === maze.exit.y) {
+            passedExit = true;
+          }
+          currentGridX = newGridX;
+          currentGridY = newGridY;
+        }
+        if (currentGridX < 0 || currentGridX >= maze.width || currentGridY < 0 || currentGridY >= maze.height) {
+          return { distance: MAX_DEPTH, x, y, gridX: currentGridX, gridY: currentGridY, passedExit };
+        }
+        if (maze.grid[currentGridY][currentGridX] === 1) {
+          let distance = Math.hypot(x - px, y - py);
+          return { distance, x, y, gridX: currentGridX, gridY: currentGridY, passedExit };
+        }
+      }
+      return { distance: MAX_DEPTH, x, y, gridX: currentGridX, gridY: currentGridY, passedExit };
+    }
+    
+    // ---------------- Global Variables and Game State ----------------
+    let maze = new Maze(21, 21);
+    let player = new Player(maze.start.x + 0.5, maze.start.y + 0.5, 0, 1.0);
+    const keys = {};
+    let gameWon = false;
+    let gameStarted = false;
+    let animationId = null;
+    
+    // Global flag for minimap
+    let minimapEnabled = true;
+    
+    // ---------------- Story Phrases Setup ----------------
+    const phrases = [
+      "I hear scratching beneath me.",
+      "I'll keep my right hand on the wall.",
+      "It hurts.",
+      "The walls are too smooth. Too perfect.",
+      "I don't remember how I got here.",
+      "Someone is watching me.",
+      "No doors. No ceilings. Just corridors.",
+      "I tried marking the walls. The scratches disappeared.",
+      "in this corner the air is colder",
+      "The floor vibrated for a moment. A low hum.",
+      "If I stop, the sound gets closer.",
+      "I can't hear my own heartbeat. I can hear something else's.",
+      "Something is waiting at the end.",
+      "The paths repeat, but they are not the same.",
+      "They don't want me to stop moving.",
+      "I don't remember my name.",
+      "I saw my own reflection in the dark. It smiled.",
+      "The walls are pulsing. I don't think they're walls.",
+      "I feel lighter. Or maybe the gravity is changing.",
+      "Something whispered my name. I don't remember telling it.",
+      "The light flickered. I saw something in the gaps.",
+      "I am not alone in here.",
+      "I tried looking up. There is no up.",
+      "They are testing me.",
+      "My hands are changing. Or the way I see them is.",
+      "The scratching below is getting louder.",
+      "They don't like it when I stop.",
+      "The paths are different every time I blink.",
+      "I think I used to be someone else.",
+      "There is a door now. It wasn't there before.",
+      "I hear them speaking in a language I almost understand.",
+      "I think I saw another me. It ran away.",
+      "The floor isn't solid anymore. It moves beneath me.",
+      "I am a rat in a cage.",
+      "They want me to find something, but I don't know what.",
+      "The maze is alive.",
+      "I saw something ahead, but it was already behind me.",
+      "The walls closed behind me. No way back.",
+      "The scratching stopped. That's worse.",
+      "I know they're watching. I know they're waiting.",
+      "What happens when I reach the end?",
+      "I am a tool. A test. A mistake.",
+      "The next time I see the door, I will go through.",
+      "There was another me here before. I found the bones.",
+      "I understand now. This is not a maze. It is a machine.",
+      "They don't need me to escape. They need me to stay."
+    ];
+    let currentPhraseIndex = 0;
+    
+    // ---------------- Audio Setup ----------------
+    let audioContext;
+    let audioElement;
+    let audioSource;
+    let gainNode;
+    let panner;
+    let audioEnabled = true;
+    
+    function initAudio() {
+      console.log("Initializing audio...");
+      
+      // Create audio element
+      audioElement = new Audio("https://cdn.freesound.org/previews/22/22267_114586-lq.mp3");
+      audioElement.loop = true;
+      
+      // Add event listeners to debug
+      audioElement.addEventListener('error', function(e) {
+        console.error("Audio error:", e);
+        console.error("Error code:", this.error ? this.error.code : "unknown");
+      });
+      
+      audioElement.addEventListener('canplay', function() {
+        console.log("Audio can play!");
+      });
+      
+      audioElement.addEventListener('playing', function() {
+        console.log("Audio is playing!");
+      });
+      
+      // Create audio context and nodes
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioSource = audioContext.createMediaElementSource(audioElement);
+        gainNode = audioContext.createGain();
+        panner = audioContext.createStereoPanner();
+        
+        // Connect the audio nodes
+        audioSource.connect(gainNode);
+        gainNode.connect(panner);
+        panner.connect(audioContext.destination);
+        
+        // Start playing with a user gesture
+        audioElement.play().then(() => {
+          console.log("Audio playback started successfully");
+        }).catch(e => {
+          console.error("Audio playback failed:", e);
+        });
+      } catch (e) {
+        console.error("Audio setup error:", e);
+      }
+    }
+    
+    // ---------------- Start Game Function ----------------
+    document.getElementById("startButton").addEventListener("click", function() {
+      const startScreen = document.getElementById("startScreen");
+      startScreen.style.display = "none";
+      
+      // Initialize audio only after user interaction
+      initAudio();
+      
+      // Start the game loop
+      gameStarted = true;
+      gameLoop();
+    });
+    
+    // ---------------- Key Input Handling ----------------
+    window.addEventListener("keydown", (e) => {
+      // Toggle minimap with 'm'
+      if (e.key.toLowerCase() === "m" && !e.repeat) {
+         minimapEnabled = !minimapEnabled;
+         return;
+      }
+      keys[e.key.toLowerCase()] = true;
+      if (gameWon && e.key.toLowerCase() === "r") {
+        location.reload();
+      }
+    });
+    
+    window.addEventListener("keyup", (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+    
+    function isInputActive() {
+      return Object.values(keys).some(v => v === true);
+    }
+    
+    // ---------------- Draw Minimap ----------------
+    function drawMinimap() {
+      const mapScale = 10;
+      const offsetX = 10;
+      const offsetY = 10;
+      
+      // Draw minimap background
+      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.fillRect(offsetX - 2, offsetY - 2, maze.width * mapScale + 4, maze.height * mapScale + 4);
+      
+      // Draw maze grid
+      for (let y = 0; y < maze.height; y++) {
+        for (let x = 0; x < maze.width; x++) {
+          if (maze.grid[y][x] === 1) {
+            ctx.fillStyle = "#888";
+          } else {
+            ctx.fillStyle = "#000";
+          }
+          ctx.fillRect(offsetX + x * mapScale, offsetY + y * mapScale, mapScale, mapScale);
+        }
+      }
+      
+      // Draw exit cell
+      if (maze.exit) {
+        ctx.fillStyle = "green";
+        ctx.fillRect(offsetX + maze.exit.x * mapScale, offsetY + maze.exit.y * mapScale, mapScale, mapScale);
+      }
+      
+      // Draw player position
+      ctx.fillStyle = "red";
+      let playerX = offsetX + player.x * mapScale;
+      let playerY = offsetY + player.y * mapScale;
+      ctx.beginPath();
+      ctx.arc(playerX, playerY, mapScale / 2, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Draw player direction line
+      ctx.strokeStyle = "red";
+      ctx.beginPath();
+      ctx.moveTo(playerX, playerY);
+      const lineLength = mapScale * 2;
+      ctx.lineTo(playerX + Math.cos(player.angle) * lineLength,
+                 playerY + Math.sin(player.angle) * lineLength);
+      ctx.stroke();
+    }
+    
+    // ---------------- Game Loop ----------------
+    function gameLoop() {
+      if (!gameWon && gameStarted) {
+        if (keys["w"]) {
+          player.move(Math.cos(player.angle) * moveSpeed,
+                      Math.sin(player.angle) * moveSpeed, maze);
+        }
+        if (keys["s"]) {
+          player.move(-Math.cos(player.angle) * moveSpeed,
+                      -Math.sin(player.angle) * moveSpeed, maze);
+        }
+        if (keys["a"]) {
+          player.move(Math.cos(player.angle - Math.PI / 2) * (0.5 * moveSpeed),
+                      Math.sin(player.angle - Math.PI / 2) * (0.5 * moveSpeed), maze);
+        }
+        if (keys["d"]) {
+          player.move(Math.cos(player.angle + Math.PI / 2) * (0.5 * moveSpeed),
+                      Math.sin(player.angle + Math.PI / 2) * (0.5 * moveSpeed), maze);
+        }
+        if (keys["arrowleft"]) {
+          player.angle -= rotSpeed;
+        }
+        if (keys["arrowright"]) {
+          player.angle += rotSpeed;
+        }
+        if (keys["arrowup"]) {
+          player.pitch += pitchSpeed;
+        }
+        if (keys["arrowdown"]) {
+          player.pitch -= pitchSpeed;
+        }
+        if (checkWinCondition()) {
+          gameWon = true;
+          handleWin();
+        }
+      }
+      
+      ctxMain.fillStyle = BLACK;
+      ctxMain.fillRect(0, 0, WIDTH, HEIGHT);
+      ctxA.fillStyle = BLACK;
+      ctxA.fillRect(0, 0, WIDTH, HEIGHT);
+      ctxB.fillStyle = BLACK;
+      ctxB.fillRect(0, 0, WIDTH, HEIGHT);
+      
+      castRays(player, maze, ctxMain, fovMain);
+      castRays(player, maze, ctxA, fovA);
+      castRays(player, maze, ctxB, fovB);
+      
+      ctx.fillStyle = BLACK;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      
+      let verticalOffset = 0;
+      let horizontalOffset = 0;
+      if (isInputActive()) {
+        verticalOffset = 3 * Math.sin(performance.now() / 1000 * 50);
+        horizontalOffset = 3 * Math.sin(performance.now() / 1000 * 50);
+      }
+      
+      ctx.save();
+      ctx.translate(horizontalOffset, verticalOffset);
+      
+      ctx.globalAlpha = 0.5;
+      ctx.filter = `sepia(1) saturate(2) hue-rotate(${hueRotateA}deg)`;
+      ctx.drawImage(bufferA, 0, 0);
+
+      ctx.filter = `sepia(1) saturate(2) hue-rotate(${hueRotateB}deg)`;
+      ctx.drawImage(bufferB, 0, 0);
+
+      ctx.drawImage(bufferMain, 0, 0);
+      
+      ctx.restore();
+      
+      ctx.filter = "none";
+      ctx.globalAlpha = 1;
+      
+      // ---------------- Update Audio Spatialization ----------------
+      if (gameStarted && maze.exit && audioEnabled && audioElement && !audioElement.paused) {
+        let exitX = maze.exit.x + 0.5;
+        let exitY = maze.exit.y + 0.5;
+        let dx = exitX - player.x;
+        let dy = exitY - player.y;
+        let distance = Math.hypot(dx, dy);
+        let angleToExit = Math.atan2(dy, dx);
+        let diff = angleToExit - player.angle;
+        while(diff > Math.PI) diff -= 2 * Math.PI;
+        while(diff < -Math.PI) diff += 2 * Math.PI;
+        let panValue = Math.sin(diff);
+        let alignment = Math.max(0, Math.cos(diff));
+        let maxDistance = 10;
+        let distanceFactor = Math.max(0, 1 - distance / maxDistance);
+        let finalGain = alignment * distanceFactor;
+        
+        panner.pan.value = panValue;
+        gainNode.gain.value = finalGain;
+      }
+      
+      // ---------------- Draw Minimap if Enabled ----------------
+      if (minimapEnabled) {
+        drawMinimap();
+      }
+      
+      animationId = requestAnimationFrame(gameLoop);
+    }
+    
+    function checkWinCondition() {
+      let gridX = Math.floor(player.x);
+      let gridY = Math.floor(player.y);
+      return maze.exit && gridX === maze.exit.x && gridY === maze.exit.y;
+    }
+    
+    // ---------------- Handle Win: Show Phrase with Fade Effects ----------------
+    function handleWin() {
+      const phrase = phrases[currentPhraseIndex];
+      showPhrase(phrase);
+      currentPhraseIndex = (currentPhraseIndex + 1) % phrases.length;
+    }
+    
+    function showPhrase(phrase) {
+      const winMessage = document.getElementById("winMessage");
+      winMessage.textContent = phrase;
+      winMessage.style.display = "flex";
+      
+      // Fade in (1 second)
+      setTimeout(() => {
+        winMessage.style.opacity = "1";
+      }, 10);
+      
+      // After 1s fade in + 5s display = 6s, reset game while still black and start fade out (1 second)
+      setTimeout(() => {
+        resetGame(); // Reset the maze and randomize maze color while screen is black
+        winMessage.style.opacity = "0";
+        
+        // After fade-out complete (1s), hide overlay
+        setTimeout(() => {
+          winMessage.style.display = "none";
+        }, 1000);
+      }, 6000);
+    }
+    
+    // ---------------- Reset Game for Next Round ----------------
+    function resetGame() {
+      maze = new Maze(21, 21);
+      player.x = maze.start.x + 0.5;
+      player.y = maze.start.y + 0.5;
+      player.angle = 0;
+      player.pitch = 0;
+      gameWon = false;
+      mazeColor = getRandomColor(); // Randomize the maze color for the new level
+      hueRotateA = Math.random() * 360; // Randomize hue rotation for bufferA
+      hueRotateB = Math.random() * 360; // Randomize hue rotation for bufferB
+    }
+  </script>
+</body>
+</html>
