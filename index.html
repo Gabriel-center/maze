@@ -39,6 +39,7 @@
       align-items: center;
       font-size: 24px;
       font-family: sans-serif;
+      text-align: center; /* MODIFICATION: Center text for mobile */
       z-index: 20;
     }
     #startButton {
@@ -80,8 +81,10 @@
   <div id="winMessage"></div>
   <div id="startScreen">
     <h1>Maze Explorer</h1>
-    <p>Use WASD to move, Arrow keys to look around</p>
-    <p>Press '1' to spawn enemy, 'M' for minimap</p>
+    <!-- MODIFICATION: Updated instructions for mobile and desktop -->
+    <p><b>Desktop:</b> WASD to move, Arrow keys to look.</p>
+    <p><b>Mobile:</b> Press and hold to move. Drag to look.</p>
+    <p>Press '1' to spawn enemy, 'M' for minimap.</p>
     <button id="startButton">Click to Begin</button>
   </div>
   <div id="gameOverScreen">
@@ -698,52 +701,28 @@
     
     // ---------------- Story Phrases Setup ----------------
     const phrases = [
-      "I hear scratching beneath me.",
-      "I'll keep my right hand on the wall.",
-      "It hurts.",
-      "The walls are too smooth. Too perfect.",
-      "I don't remember how I got here.",
-      "Someone is watching me.",
-      "No doors. No ceilings. Just corridors.",
-      "I tried marking the walls. The scratches disappeared.",
-      "in this corner the air is colder",
-      "The floor vibrated for a moment. A low hum.",
-      "If I stop, the sound gets closer.",
-      "I can't hear my own heartbeat. I can hear something else's.",
-      "Something is waiting at the end.",
-      "The paths repeat, but they are not the same.",
-      "They don't want me to stop moving.",
-      "I don't remember my name.",
-      "I saw my own reflection in the dark. It smiled.",
-      "The walls are pulsing. I don't think they're walls.",
-      "I feel lighter. Or maybe the gravity is changing.",
-      "Something whispered my name. I don't remember telling it.",
-      "The light flickered. I saw something in the gaps.",
-      "I am not alone in here.",
-      "I tried looking up. There is no up.",
-      "They are testing me.",
-      "My hands are changing. Or the way I see them is.",
-      "The scratching below is getting louder.",
-      "They don't like it when I stop.",
-      "The paths are different every time I blink.",
-      "I think I used to be someone else.",
-      "There is a door now. It wasn't there before.",
-      "I hear them speaking in a language I almost understand.",
-      "I think I saw another me. It ran away.",
-      "The floor isn't solid anymore. It moves beneath me.",
-      "I am a rat in a cage.",
-      "They want me to find something, but I don't know what.",
-      "The maze is alive.",
-      "I saw something ahead, but it was already behind me.",
-      "The walls closed behind me. No way back.",
-      "The scratching stopped. That's worse.",
-      "I know they're watching. I know they're waiting.",
-      "What happens when I reach the end?",
-      "I am a tool. A test. A mistake.",
-      "The next time I see the door, I will go through.",
-      "There was another me here before. I found the bones.",
-      "I understand now. This is not a maze. It is a machine.",
-      "They don't need me to escape. They need me to stay."
+      "I hear scratching beneath me.", "I'll keep my right hand on the wall.", "It hurts.",
+      "The walls are too smooth. Too perfect.", "I don't remember how I got here.", "Someone is watching me.",
+      "No doors. No ceilings. Just corridors.", "I tried marking the walls. The scratches disappeared.",
+      "in this corner the air is colder", "The floor vibrated for a moment. A low hum.",
+      "If I stop, the sound gets closer.", "I can't hear my own heartbeat. I can hear something else's.",
+      "Something is waiting at the end.", "The paths repeat, but they are not the same.",
+      "They don't want me to stop moving.", "I don't remember my name.",
+      "I saw my own reflection in the dark. It smiled.", "The walls are pulsing. I don't think they're walls.",
+      "I feel lighter. Or maybe the gravity is changing.", "Something whispered my name. I don't remember telling it.",
+      "The light flickered. I saw something in the gaps.", "I am not alone in here.",
+      "I tried looking up. There is no up.", "They are testing me.",
+      "My hands are changing. Or the way I see them is.", "The scratching below is getting louder.",
+      "They don't like it when I stop.", "The paths are different every time I blink.",
+      "I think I used to be someone else.", "There is a door now. It wasn't there before.",
+      "I hear them speaking in a language I almost understand.", "I think I saw another me. It ran away.",
+      "The floor isn't solid anymore. It moves beneath me.", "I am a rat in a cage.",
+      "They want me to find something, but I don't know what.", "The maze is alive.",
+      "I saw something ahead, but it was already behind me.", "The walls closed behind me. No way back.",
+      "The scratching stopped. That's worse.", "I know they're watching. I know they're waiting.",
+      "What happens when I reach the end?", "I am a tool. A test. A mistake.",
+      "The next time I see the door, I will go through.", "There was another me here before. I found the bones.",
+      "I understand now. This is not a maze. It is a machine.", "They don't need me to escape. They need me to stay."
     ];
     let currentPhraseIndex = 0;
     
@@ -757,43 +736,21 @@
     
     function initAudio() {
       console.log("Initializing audio...");
-      
-      // Create audio element
       audioElement = new Audio("https://cdn.freesound.org/previews/22/22267_114586-lq.mp3");
       audioElement.loop = true;
+      audioElement.addEventListener('error', (e) => console.error("Audio error:", e));
+      audioElement.addEventListener('canplay', () => console.log("Audio can play!"));
+      audioElement.addEventListener('playing', () => console.log("Audio is playing!"));
       
-      // Add event listeners to debug
-      audioElement.addEventListener('error', function(e) {
-        console.error("Audio error:", e);
-        console.error("Error code:", this.error ? this.error.code : "unknown");
-      });
-      
-      audioElement.addEventListener('canplay', function() {
-        console.log("Audio can play!");
-      });
-      
-      audioElement.addEventListener('playing', function() {
-        console.log("Audio is playing!");
-      });
-      
-      // Create audio context and nodes
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioSource = audioContext.createMediaElementSource(audioElement);
         gainNode = audioContext.createGain();
         panner = audioContext.createStereoPanner();
-        
-        // Connect the audio nodes
         audioSource.connect(gainNode);
         gainNode.connect(panner);
         panner.connect(audioContext.destination);
-        
-        // Start playing with a user gesture
-        audioElement.play().then(() => {
-          console.log("Audio playback started successfully");
-        }).catch(e => {
-          console.error("Audio playback failed:", e);
-        });
+        audioElement.play().catch(e => console.error("Audio playback failed:", e));
       } catch (e) {
         console.error("Audio setup error:", e);
       }
@@ -803,66 +760,132 @@
     document.getElementById("startButton").addEventListener("click", function() {
       const startScreen = document.getElementById("startScreen");
       startScreen.style.display = "none";
-      
-      // Initialize audio only after user interaction
       initAudio();
-      
-      // Start the game loop
       gameStarted = true;
       gameLoop();
     });
     
     // ---------------- Game Over Function ----------------
-    document.getElementById("restartButton").addEventListener("click", function() {
-      location.reload();
-    });
+    document.getElementById("restartButton").addEventListener("click", () => location.reload());
     
     function handleGameOver() {
       gameOver = true;
       gameStarted = false;
-      const gameOverScreen = document.getElementById("gameOverScreen");
-      gameOverScreen.style.display = "flex";
-      
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
+      document.getElementById("gameOverScreen").style.display = "flex";
+      if (animationId) cancelAnimationFrame(animationId);
     }
     
     // ---------------- Collision Detection ----------------
     function checkEnemyCollision() {
       if (!enemy) return false;
-      
       let distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
       return distance < (enemyRadius + 0.2); // Player collision radius
     }
-    
+
     // ---------------- Key Input Handling ----------------
     window.addEventListener("keydown", (e) => {
-      // Toggle minimap with 'm'
       if (e.key.toLowerCase() === "m" && !e.repeat) {
          minimapEnabled = !minimapEnabled;
          return;
       }
-      
-      // Spawn enemy with '1'
       if (e.key === "1" && !e.repeat && gameStarted && !gameOver) {
-        if (!enemy) {
-          enemy = spawnEnemy(maze, player);
-          console.log("Enemy spawned at:", enemy.x, enemy.y);
-        }
+        if (!enemy) enemy = spawnEnemy(maze, player);
         return;
       }
-      
       keys[e.key.toLowerCase()] = true;
-      if (gameWon && e.key.toLowerCase() === "r") {
-        location.reload();
-      }
+      if (gameWon && e.key.toLowerCase() === "r") location.reload();
     });
     
     window.addEventListener("keyup", (e) => {
       keys[e.key.toLowerCase()] = false;
     });
     
+    // MODIFICATION: Add touch state variables
+    let isTouching = false;
+    let isDragging = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+    let touchStartTime = 0;
+    const touchHoldTime = 150; // ms to hold before moving forward
+    const touchDragThreshold = 10; // pixels to drag before it's a look action
+    
+    // NEW: Mobile sensitivity and inertia constants
+    const baseMobileSensitivity = 0.001; // Increased base sensitivity
+    const velocitySensitivityMultiplier = 0.0001; // How much velocity affects sensitivity
+    let inertiaAngleVelocity = 0;
+    let inertiaPitchVelocity = 0;
+    const inertiaDamping = 0.95; // 5% reduction in velocity per frame
+
+    // MODIFICATION: Add touch event handlers
+    function handleTouchStart(e) {
+      if (!gameStarted || gameOver) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      isTouching = true;
+      isDragging = false;
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      lastTouchX = touch.clientX;
+      lastTouchY = touch.clientY;
+      touchStartTime = performance.now();
+      
+      // NEW: Reset inertia when a new touch begins
+      inertiaAngleVelocity = 0;
+      inertiaPitchVelocity = 0;
+    }
+
+    function handleTouchMove(e) {
+      if (!isTouching || !gameStarted || gameOver) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      
+      const deltaX = touch.clientX - touchStartX;
+      const deltaY = touch.clientY - touchStartY;
+
+      // Check if the drag is significant enough to be considered a 'look' action
+      if (!isDragging && Math.hypot(deltaX, deltaY) > touchDragThreshold) {
+        isDragging = true;
+      }
+
+      if (isDragging) {
+        const moveX = touch.clientX - lastTouchX;
+        const moveY = touch.clientY - lastTouchY;
+        
+        // NEW: Velocity-scaled sensitivity
+        const dynamicSensitivity = baseMobileSensitivity + Math.abs(moveX) * velocitySensitivityMultiplier;
+        
+        const angleChange = moveX * dynamicSensitivity;
+        const pitchChange = -moveY * (pitchSpeed / 20); // Scale pitch sensitivity
+        
+        player.angle += angleChange;
+        player.pitch += pitchChange;
+        
+        // NEW: Store the last movement to calculate inertia
+        inertiaAngleVelocity = angleChange;
+        inertiaPitchVelocity = pitchChange;
+        
+        lastTouchX = touch.clientX;
+        lastTouchY = touch.clientY;
+      }
+    }
+
+    function handleTouchEnd(e) {
+      if (!gameStarted) return;
+      e.preventDefault();
+      isTouching = false;
+      isDragging = false;
+      keys['w'] = false; // Stop moving forward
+    }
+
+    // MODIFICATION: Add event listeners for touch controls
+    window.addEventListener('touchstart', handleTouchStart, { passive: false });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd, { passive: false });
+    window.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+
     function isInputActive() {
       return Object.values(keys).some(v => v === true);
     }
@@ -873,43 +896,21 @@
       const offsetX = 10;
       const offsetY = 10;
       
-      // Draw minimap background
       ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
       ctx.fillRect(offsetX - 2, offsetY - 2, maze.width * mapScale + 4, maze.height * mapScale + 4);
       
-      // Draw maze grid
       for (let y = 0; y < maze.height; y++) {
         for (let x = 0; x < maze.width; x++) {
-          if (maze.grid[y][x] === 1) {
-            ctx.fillStyle = "#888";
-          } else {
-            ctx.fillStyle = "#000";
-          }
+          ctx.fillStyle = (maze.grid[y][x] === 1) ? "#888" : "#000";
           ctx.fillRect(offsetX + x * mapScale, offsetY + y * mapScale, mapScale, mapScale);
         }
       }
       
-      // Draw flood fill visualization (optional, for debugging)
-      if (enemy && enemy.floodFill && false) { // Set to true to see flood fill
-        for (let y = 0; y < maze.height; y++) {
-          for (let x = 0; x < maze.width; x++) {
-            const dist = enemy.floodFill[y][x];
-            if (dist !== -1 && dist !== Infinity) {
-              const intensity = Math.max(0, 1 - dist / 20);
-              ctx.fillStyle = `rgba(0, 100, 255, ${intensity * 0.3})`;
-              ctx.fillRect(offsetX + x * mapScale, offsetY + y * mapScale, mapScale, mapScale);
-            }
-          }
-        }
-      }
-      
-      // Draw exit cell
       if (maze.exit) {
         ctx.fillStyle = "green";
         ctx.fillRect(offsetX + maze.exit.x * mapScale, offsetY + maze.exit.y * mapScale, mapScale, mapScale);
       }
       
-      // Draw enemy strategic target if in strategic mode
       if (enemy && enemy.mode === 'strategic' && enemy.strategicTarget) {
         ctx.fillStyle = "rgba(255, 165, 0, 0.7)";
         let targetX = offsetX + enemy.strategicTarget.x * mapScale;
@@ -919,23 +920,18 @@
         ctx.fill();
       }
       
-      // Draw enemy if it exists
       if (enemy) {
-        // Different colors based on mode
         ctx.fillStyle = enemy.mode === 'chase' ? "red" : "orange";
         let enemyX = offsetX + enemy.x * mapScale;
         let enemyY = offsetY + enemy.y * mapScale;
         ctx.beginPath();
         ctx.arc(enemyX, enemyY, mapScale / 3, 0, 2 * Math.PI);
         ctx.fill();
-        
-        // Draw mode indicator
         ctx.fillStyle = "white";
         ctx.font = "8px sans-serif";
         ctx.fillText(enemy.mode === 'chase' ? 'C' : 'S', enemyX - 3, enemyY + 3);
       }
       
-      // Draw player position
       ctx.fillStyle = "blue";
       let playerX = offsetX + player.x * mapScale;
       let playerY = offsetY + player.y * mapScale;
@@ -943,31 +939,36 @@
       ctx.arc(playerX, playerY, mapScale / 2, 0, 2 * Math.PI);
       ctx.fill();
       
-      // Draw player direction line
       ctx.strokeStyle = "blue";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(playerX, playerY);
-      const lineLength = mapScale * 2;
-      ctx.lineTo(playerX + Math.cos(player.angle) * lineLength,
-                 playerY + Math.sin(player.angle) * lineLength);
+      ctx.lineTo(playerX + Math.cos(player.angle) * (mapScale * 2),
+                 playerY + Math.sin(player.angle) * (mapScale * 2));
       ctx.stroke();
     }
     
     // ---------------- Game Loop ----------------
     function gameLoop() {
       if (!gameOver && !gameWon && gameStarted) {
+        // MODIFICATION: Add touch logic to game loop
+        // If touching but not dragging, and held for a moment, move forward.
+        if (isTouching && !isDragging && (performance.now() - touchStartTime > touchHoldTime)) {
+            keys['w'] = true;
+        } else if (!keys['w']) { // Don't override keyboard input if 'w' is held
+            keys['w'] = false;
+        }
+
         // Update enemy if it exists
         if (enemy) {
           enemy.update(player, maze, performance.now());
-          
-          // Check collision with enemy
           if (checkEnemyCollision()) {
             handleGameOver();
             return;
           }
         }
         
+        // Keyboard movement (still works)
         if (keys["w"]) {
           player.move(Math.cos(player.angle) * moveSpeed,
                       Math.sin(player.angle) * moveSpeed, maze);
@@ -996,6 +997,23 @@
         if (keys["arrowdown"]) {
           player.pitch -= pitchSpeed;
         }
+        
+        // NEW: Apply and dampen inertia if not currently dragging
+        if (!isDragging) {
+          if (Math.abs(inertiaAngleVelocity) > 0.0001) {
+            player.angle += inertiaAngleVelocity;
+            inertiaAngleVelocity *= inertiaDamping;
+          } else {
+            inertiaAngleVelocity = 0;
+          }
+          if (Math.abs(inertiaPitchVelocity) > 0.0001) {
+            player.pitch += inertiaPitchVelocity;
+            inertiaPitchVelocity *= inertiaDamping;
+          } else {
+            inertiaPitchVelocity = 0;
+          }
+        }
+        
         if (checkWinCondition()) {
           gameWon = true;
           handleWin();
@@ -1089,20 +1107,12 @@
       winMessage.textContent = phrase;
       winMessage.style.display = "flex";
       
-      // Fade in (1 second)
-      setTimeout(() => {
-        winMessage.style.opacity = "1";
-      }, 10);
+      setTimeout(() => { winMessage.style.opacity = "1"; }, 10);
       
-      // After 1s fade in + 5s display = 6s, reset game while still black and start fade out (1 second)
       setTimeout(() => {
-        resetGame(); // Reset the maze and randomize maze color while screen is black
+        resetGame(); 
         winMessage.style.opacity = "0";
-        
-        // After fade-out complete (1s), hide overlay
-        setTimeout(() => {
-          winMessage.style.display = "none";
-        }, 1000);
+        setTimeout(() => { winMessage.style.display = "none"; }, 1000);
       }, 6000);
     }
     
@@ -1113,12 +1123,12 @@
       player.y = maze.start.y + 0.5;
       player.angle = 0;
       player.pitch = 0;
-      enemy = null; // Remove enemy on reset
+      enemy = null;
       gameWon = false;
       gameOver = false;
-      mazeColor = getRandomColor(); // Randomize the maze color for the new level
-      hueRotateA = Math.random() * 360; // Randomize hue rotation for bufferA
-      hueRotateB = Math.random() * 360; // Randomize hue rotation for bufferB
+      mazeColor = getRandomColor();
+      hueRotateA = Math.random() * 360;
+      hueRotateB = Math.random() * 360;
     }
   </script>
 </body>
