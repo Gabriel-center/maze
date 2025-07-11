@@ -83,7 +83,7 @@
     <h1>Maze Explorer</h1>
     <!-- MODIFICATION: Updated instructions for mobile and desktop -->
     <p><b>Desktop:</b> WASD to move, Arrow keys to look.</p>
-    <p><b>Mobile:</b> Press and hold to move. Drag to look.</p>
+    <p><b>Mobile:</b> Press and hold to move. Drag to look. Double-tap to toggle fullscreen.</p>
     <p>Press '1' to spawn enemy, 'M' for minimap.</p>
     <button id="startButton">Click to Begin</button>
   </div>
@@ -112,15 +112,22 @@
     const ctxA = bufferA.getContext("2d");
     const ctxB = bufferB.getContext("2d");
     
-    window.addEventListener("resize", () => {
-      WIDTH = window.innerWidth;
-      HEIGHT = window.innerHeight;
-      canvas.width = WIDTH;
-      canvas.height = HEIGHT;
-      bufferMain.width = WIDTH; bufferMain.height = HEIGHT;
-      bufferA.width = WIDTH; bufferA.height = HEIGHT;
-      bufferB.width = WIDTH; bufferB.height = HEIGHT;
-    });
+    // MODIFICATION: Centralized resize handler with delay
+    function handleResize() {
+        // Delay the resize to allow the browser to report final dimensions
+        setTimeout(() => {
+            WIDTH = window.innerWidth;
+            HEIGHT = window.innerHeight;
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            bufferMain.width = WIDTH; bufferMain.height = HEIGHT;
+            bufferA.width = WIDTH; bufferA.height = HEIGHT;
+            bufferB.width = WIDTH; bufferB.height = HEIGHT;
+        }, 50); // 50ms delay
+    }
+
+    window.addEventListener("resize", handleResize);
+    document.addEventListener("fullscreenchange", handleResize);
     
     // ---------------- Configuration Constants ----------------
     const fovMain = Math.PI / 1.2;
@@ -143,6 +150,10 @@
     const rotSpeed = 0.03;
     const pitchSpeed = 10; // Adjust for smooth pitch changes
     
+    // NEW: Mobile device detection and speed adjustment
+    const isMobile = /Mobi|Android|iPhone/i.test(navigator.userAgent);
+    const playerMoveSpeed = isMobile ? moveSpeed * 0.75 : moveSpeed;
+
     // Enemy configuration
     const enemySpeed = 0.025; // Slower than player
     const enemyRadius = 0.25; // Enemy size for collision
@@ -775,6 +786,34 @@
       if (animationId) cancelAnimationFrame(animationId);
     }
     
+    // NEW: Function to toggle fullscreen mode
+    function toggleFullScreen() {
+      if (!document.fullscreenElement &&    // Standard
+          !document.mozFullScreenElement && // Firefox
+          !document.webkitFullscreenElement && // Chrome, Safari and Opera
+          !document.msFullscreenElement) {  // IE/Edge
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen();
+        } else if (document.documentElement.mozRequestFullScreen) { /* Firefox */
+          document.documentElement.mozRequestFullScreen();
+        } else if (document.documentElement.webkitRequestFullscreen) { /* Chrome, Safari and Opera */
+          document.documentElement.webkitRequestFullscreen();
+        } else if (document.documentElement.msRequestFullscreen) { /* IE/Edge */
+          document.documentElement.msRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.mozCancelFullScreen) { /* Firefox */
+          document.mozCancelFullScreen();
+        } else if (document.webkitExitFullscreen) { /* Chrome, Safari and Opera */
+          document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) { /* IE/Edge */
+          document.msExitFullscreen();
+        }
+      }
+    }
+    
     // ---------------- Collision Detection ----------------
     function checkEnemyCollision() {
       if (!enemy) return false;
@@ -812,15 +851,27 @@
     const touchDragThreshold = 10; // pixels to drag before it's a look action
     
     // NEW: Mobile sensitivity and inertia constants
-    const baseMobileSensitivity = 0.001; // Increased base sensitivity
+    const baseMobileSensitivity = 0.001;
     const velocitySensitivityMultiplier = 0.0001; // How much velocity affects sensitivity
     let inertiaAngleVelocity = 0;
     let inertiaPitchVelocity = 0;
     const inertiaDamping = 0.95; // 5% reduction in velocity per frame
+    
+    // NEW: Double-tap tracking
+    let lastTapTime = 0;
 
     // MODIFICATION: Add touch event handlers
     function handleTouchStart(e) {
       if (!gameStarted || gameOver) return;
+            const currentTime = performance.now();
+      const doubleTapThreshold = 300; // ms
+      if (currentTime - lastTapTime < doubleTapThreshold) {
+          toggleFullScreen();
+          lastTapTime = 0; // Reset to prevent re-triggering
+      } else {
+          lastTapTime = currentTime;
+      }
+
       e.preventDefault();
       const touch = e.touches[0];
       isTouching = true;
@@ -831,7 +882,6 @@
       lastTouchY = touch.clientY;
       touchStartTime = performance.now();
       
-      // NEW: Reset inertia when a new touch begins
       inertiaAngleVelocity = 0;
       inertiaPitchVelocity = 0;
     }
@@ -844,7 +894,6 @@
       const deltaX = touch.clientX - touchStartX;
       const deltaY = touch.clientY - touchStartY;
 
-      // Check if the drag is significant enough to be considered a 'look' action
       if (!isDragging && Math.hypot(deltaX, deltaY) > touchDragThreshold) {
         isDragging = true;
       }
@@ -853,16 +902,14 @@
         const moveX = touch.clientX - lastTouchX;
         const moveY = touch.clientY - lastTouchY;
         
-        // NEW: Velocity-scaled sensitivity
         const dynamicSensitivity = baseMobileSensitivity + Math.abs(moveX) * velocitySensitivityMultiplier;
         
         const angleChange = moveX * dynamicSensitivity;
-        const pitchChange = -moveY * (pitchSpeed / 20); // Scale pitch sensitivity
+        const pitchChange = -moveY * (pitchSpeed / 20);
         
         player.angle += angleChange;
         player.pitch += pitchChange;
         
-        // NEW: Store the last movement to calculate inertia
         inertiaAngleVelocity = angleChange;
         inertiaPitchVelocity = pitchChange;
         
@@ -968,22 +1015,22 @@
           }
         }
         
-        // Keyboard movement (still works)
+        // Keyboard movement (uses platform-specific speed)
         if (keys["w"]) {
-          player.move(Math.cos(player.angle) * moveSpeed,
-                      Math.sin(player.angle) * moveSpeed, maze);
+          player.move(Math.cos(player.angle) * playerMoveSpeed,
+                      Math.sin(player.angle) * playerMoveSpeed, maze);
         }
         if (keys["s"]) {
-          player.move(-Math.cos(player.angle) * moveSpeed,
-                      -Math.sin(player.angle) * moveSpeed, maze);
+          player.move(-Math.cos(player.angle) * playerMoveSpeed,
+                      -Math.sin(player.angle) * playerMoveSpeed, maze);
         }
         if (keys["a"]) {
-          player.move(Math.cos(player.angle - Math.PI / 2) * (0.5 * moveSpeed),
-                      Math.sin(player.angle - Math.PI / 2) * (0.5 * moveSpeed), maze);
+          player.move(Math.cos(player.angle - Math.PI / 2) * (0.5 * playerMoveSpeed),
+                      Math.sin(player.angle - Math.PI / 2) * (0.5 * playerMoveSpeed), maze);
         }
         if (keys["d"]) {
-          player.move(Math.cos(player.angle + Math.PI / 2) * (0.5 * moveSpeed),
-                      Math.sin(player.angle + Math.PI / 2) * (0.5 * moveSpeed), maze);
+          player.move(Math.cos(player.angle + Math.PI / 2) * (0.5 * playerMoveSpeed),
+                      Math.sin(player.angle + Math.PI / 2) * (0.5 * playerMoveSpeed), maze);
         }
         if (keys["arrowleft"]) {
           player.angle -= rotSpeed;
